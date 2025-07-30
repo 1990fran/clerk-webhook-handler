@@ -1,135 +1,47 @@
-//import {
-//  updateStudentRole,
-//  createStudentDatabase,
-//} from "@/lib/actions/student";
 import { NextRequest } from "next/server";
-//import { createCoachDatabase, updateCoachRole } from "@/lib/actions/coach";
 import { clerkClient } from "@clerk/nextjs/server";
 
 export async function POST(req: NextRequest) {
-  console.log("🚀 Webhook iniciado - Timestamp:", new Date().toISOString());
-  const clerkCl = await clerkClient();
+  console.log("🚀 Webhook iniciado:", new Date().toISOString());
+  const clerk = await clerkClient();
+
   try {
     const evt = await req.json();
-    console.log("📦 Evento recibido:", JSON.stringify(evt, null, 2));
-    console.log("🔍 Tipo de evento:", evt.type);
+    console.log("📦 Evento:", evt.type, JSON.stringify(evt.data));
 
-    /* if (evt.type === 'user.created') {
-      console.log("👤 Procesando user.created");
-      const { id, first_name, last_name } = evt.data;
-      console.log("📋 Datos del usuario:", { id, first_name, last_name });
-
-      const clerkCl = await clerkClient();
-      const memberships = await clerkCl.users.getOrganizationMembershipList({ userId: id });
-      console.log("🏢 Membresías encontradas:", memberships.data.length);
-      const role = memberships.data[0].role.trim();
-      console.log("🎭 Rol asignado:", role);
-
-      await processUserRole(id, role);
-
-      if (first_name) {
-        console.log("✏️ Actualizando nombre del usuario");
-        await clerkCl.users.updateUser(id, {
-          firstName: first_name,
-          lastName: last_name,
-        });
-        console.log("✅ Nombre actualizado correctamente");
-      }
-    } */
-
-    if (evt.type == 'organizationInvitation.accepted') {
-      console.log("📨 Procesando organizationInvitation.accepted");
+    if (evt.type === 'organizationInvitation.accepted') {
       const { email_address, role, public_metadata } = evt.data;
-      console.log("📧 Email:", email_address);
-      console.log("🎭 Rol:", role);
-      console.log("📊 Metadata pública:", JSON.stringify(public_metadata, null, 2));
-      
-      const { firstName, lastName, access_career_compass } = public_metadata ?? {};
-      console.log("👤 Datos extraídos:", { firstName, lastName, access_career_compass });
+      console.log("📧", email_address, "🎭", role);
 
-      // Look for the email
-      const clerkCl = await clerkClient();
-      console.log("🔎 Buscando usuario por email:", email_address);
-      const users = await clerkCl.users.getUserList({ emailAddress: [email_address] });
-      console.log("👥 Usuarios encontrados:", users.data.length);
-
-      if (users.data.length > 0) {
-        const user = users.data[0];
-        console.log("👤 Usuario encontrado:", user.id);
-        console.log("📧 Emails del usuario:", user.emailAddresses?.map(e => e.emailAddress));
-        
-        const emailObj = user.emailAddresses?.find(e => e.emailAddress === email_address);
-        console.log("🎯 Email coincidente encontrado:", !!emailObj);
-
-        if (emailObj) {
-          console.log("✏️ Actualizando usuario con email existente");
-          await clerkCl.users.updateUser(user.id, {
-            primaryEmailAddressID: emailObj.id,
-            firstName,
-            lastName,
-          });
-          console.log("✅ Usuario actualizado correctamente");
-        } else {
-          console.log("➕ Creando nuevo email para el usuario");
-          // Fallback: crear el email si no existe y marcarlo como primario
-          const newEmail = await clerkCl.emailAddresses.createEmailAddress({
-            userId: user.id,
-            emailAddress: email_address,
-            verified: true,
-            primary: true,
-          });
-          console.log("📧 Nuevo email creado:", newEmail.id);
-
-          await clerkCl.users.updateUser(user.id, {
-            firstName,
-            lastName,
-            primaryEmailAddressID: newEmail.id,
-          });
-          console.log("✅ Usuario actualizado con nuevo email");
-        }
-        
-        console.log("🔄 Procesando rol del usuario");
-        await processUserRole(user.id, role, access_career_compass);
-      } else {
-        console.log("❌ No se encontró usuario con el email:", email_address);
+      // 1) Encuentra al usuario por email
+      const users = await clerk.users.getUserList({ emailAddress: [email_address] });
+      if (users.data.length === 0) {
+        console.warn("Usuario no existe:", email_address);
+        return new Response("No user", { status: 200 });
       }
-    }
+      const user = users.data[0];
 
-    if (evt.type === "user.created") {
-    const { id: userId, unsafe_metadata } = evt.data;
-    const role = unsafe_metadata?.role as string;
-    const organizationId = process.env.NYU_ORG_ID!;
-
-    console.log({ organizationId, userId, role });
-    if (!organizationId || !userId || !role) {
-        throw new Error("Falta organizationId, userId o role");
-    }
-
-    // 1) Obtén la instancia real:
-    const clerk = await clerkClient();
-
-    // 2) Actualiza el rol:
-    await clerk.organizations.updateOrganizationMembership({
+      // 2) Actualiza el rol en Clerk
+      const organizationId = process.env.NYU_ORG_ID!;
+      await clerk.organizations.updateOrganizationMembership({
         organizationId,
-        userId,
+        userId: user.id,
         role,
-    });
-    console.log("✅ Rol actualizado en Clerk");
+      });
+      console.log("✅ Rol actualizado a", role, "para user", user.id);
 
-    // 3) Continúa tu lógica:
-    await processUserRole(userId, role);
+      // 3) Lógica adicional (crear DB, etc.)
+      await processUserRole(user.id, role, public_metadata?.access_career_compass);
     }
 
-
-    console.log("✅ Webhook procesado exitosamente");
-    return new Response("Webhook received", { status: 200 });
+    return new Response("Webhook processed", { status: 200 });
   } catch (err) {
-    console.error("❌ Error completo:", err);
-    console.error("🔍 Stack trace:", err instanceof Error ? err.stack : "No stack available");
-    console.error("📊 Error stringificado:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
-    return new Response("Error verifying webhook", { status: 400 });
+    console.error("❌ Error en webhook:", err);
+    return new Response("Error", { status: 400 });
   }
 }
+
+// … tu función processUserRole igual que antes …
 
 async function processUserRole(userId: string, role: string, access?: boolean) {
   console.log("🎭 === INICIANDO processUserRole ===");
