@@ -8,7 +8,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 
 export async function POST(req: NextRequest) {
   console.log("🚀 Webhook iniciado - Timestamp:", new Date().toISOString());
-  
+  const clerkCl = await clerkClient();
   try {
     const evt = await req.json();
     console.log("📦 Evento recibido:", JSON.stringify(evt, null, 2));
@@ -97,30 +97,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (evt.type === "user.created") {
-    const { id, unsafe_metadata } = evt.data;
-    const { role } = unsafe_metadata ?? {};
-
-    const clerkCl = await clerkClient();
+    const { id: userId, unsafe_metadata } = evt.data;
+    const role = unsafe_metadata?.role as string;
     const organizationId = process.env.NYU_ORG_ID!;
 
-    console.log("🔎 Obteniendo membresías del usuario", id);
-    const { data: memberships } = await clerkCl.users.getOrganizationMembershipList({ userId: id });
-    const membership = memberships.find(m => m.organization.id === organizationId);
-
-    if (!membership) {
-        throw new Error(`No membership found for user ${id} in organization ${organizationId}`);
+    console.log({ organizationId, userId, role });
+    if (!organizationId || !userId || !role) {
+        throw new Error("Falta organizationId, userId o role");
     }
 
-    console.log("🔄 Actualizando rol por tipo");
-    await clerkCl.organizations.updateOrganizationMembership({
+    // 1) Obtén la instancia real:
+    const clerk = await clerkClient();
+
+    // 2) Actualiza el rol:
+    await clerk.organizations.updateOrganizationMembership({
         organizationId,
-        userId: id,
-        role: role as string,
+        userId,
+        role,
     });
-    console.log("✅ Rol actualizado correctamente");
+    console.log("✅ Rol actualizado en Clerk");
 
-    await processUserRole(id, role);
+    // 3) Continúa tu lógica:
+    await processUserRole(userId, role);
     }
+
+
     console.log("✅ Webhook procesado exitosamente");
     return new Response("Webhook received", { status: 200 });
   } catch (err) {
