@@ -1,45 +1,67 @@
 import { NextRequest } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 
+
 export async function POST(req: NextRequest) {
-  console.log("🚀 Webhook iniciado:", new Date().toISOString());
+  console.log("🚀 Webhook iniciado", new Date().toISOString());
   const clerk = await clerkClient();
 
   try {
     const evt = await req.json();
-    console.log("📦 Evento:", evt.type, JSON.stringify(evt.data));
+    console.log("📦 Evento recibido:", evt.type);
 
-    if (evt.type === 'organizationInvitation.accepted') {
+    // ——— 1) Invitación aceptada ———
+    if (evt.type === "organizationInvitation.accepted") {
       const { email_address, role, public_metadata } = evt.data;
-      console.log("📧", email_address, "🎭", role);
+      console.log("✉️ Invitación aceptada:", email_address, role);
 
-      // 1) Encuentra al usuario por email
+      // Busca el userId…
       const users = await clerk.users.getUserList({ emailAddress: [email_address] });
       if (users.data.length === 0) {
-        console.warn("Usuario no existe:", email_address);
+        console.warn("Usuario no encontrado:", email_address);
         return new Response("No user", { status: 200 });
       }
-      const user = users.data[0];
+      const userId = users.data[0].id;
 
-      // 2) Actualiza el rol en Clerk
-      const organizationId = process.env.NYU_ORG_ID!;
+      // Actualiza rol en Clerk
       await clerk.organizations.updateOrganizationMembership({
-        organizationId,
-        userId: user.id,
+        organizationId: process.env.NYU_ORG_ID!,
+        userId,
         role,
       });
-      console.log("✅ Rol actualizado a", role, "para user", user.id);
+      console.log("✅ Rol actualizado en Clerk para", userId);
 
-      // 3) Lógica adicional (crear DB, etc.)
-      await processUserRole(user.id, role, public_metadata?.access_career_compass);
+      // Lógica adicional
+      await processUserRole(userId, role, public_metadata?.access_career_compass);
+      return new Response("OK", { status: 200 });
     }
 
-    return new Response("Webhook processed", { status: 200 });
+    // ——— 2) Nueva membresía creada ———
+    if (evt.type === "organizationMembership.created" ||
+        evt.type === "organization_membership.created") {
+      console.log("📬 organizationMembership.created");
+
+      const {
+        organization: { id: organizationId },
+        public_user_data: { user_id: userId },
+        role
+      } = evt.data;
+
+      console.log({ organizationId, userId, role });
+      await processUserRole(userId, role);
+      return new Response("OK", { status: 200 });
+    }
+
+    // Otros eventos que quieras manejar…
+    console.log("🔍 Evento no gestionado:", evt.type);
+    return new Response("Ignored", { status: 200 });
+
   } catch (err) {
     console.error("❌ Error en webhook:", err);
     return new Response("Error", { status: 400 });
   }
 }
+
 
 // … tu función processUserRole igual que antes …
 
