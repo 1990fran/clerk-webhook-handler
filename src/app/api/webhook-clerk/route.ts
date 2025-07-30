@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
     console.log("📦 Evento recibido:", JSON.stringify(evt, null, 2));
     console.log("🔍 Tipo de evento:", evt.type);
 
-    // Handle user creation
     /* if (evt.type === 'user.created') {
       console.log("👤 Procesando user.created");
       const { id, first_name, last_name } = evt.data;
