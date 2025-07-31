@@ -28,6 +28,23 @@ export async function POST(req: NextRequest) {
       }
 
     } */
+   if (evt.type === "organizationMembership.created") {
+      const { userId, role } = evt.data;
+
+      const clerkCl = await clerkClient();
+      const organizationId = process.env.NYU_ORG_ID!;
+
+      // Update the organization membership with the role
+      await clerkCl.organizations.updateOrganizationMembership({
+        organizationId,
+        userId: userId as string,
+        //role: role as string,
+        role: "org:coach", // Default to coach if not student
+      });
+
+      await processUserRole(userId, role);
+
+   }
     if (evt.type === "user.created") {
       const { id, /* first_name, last_name, */ unsafe_metadata } = evt.data;
       const { /* access_career_compass, */ role } = unsafe_metadata ?? {};
@@ -42,8 +59,8 @@ export async function POST(req: NextRequest) {
       await clerkCl.organizations.updateOrganizationMembership({
         organizationId,
         userId: id as string,
-        //role: role as string /* === "org:student" ? "org:student" : "org:coach" */,
-        role: "org:coach", // For now, all new users are coaches
+        role: role as string /* === "org:student" ? "org:student" : "org:coach" */,
+        //role: "org:coach", // For now, all new users are coaches
       });
 
       await processUserRole(id, role);
