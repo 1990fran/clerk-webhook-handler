@@ -1,104 +1,76 @@
+//import {
+//  updateStudentRole,
+//  createStudentDatabase,
+//} from "@/lib/actions/student";
 import { NextRequest } from "next/server";
+//import { createCoachDatabase, updateCoachRole } from "@/lib/actions/coach";
 import { clerkClient } from "@clerk/nextjs/server";
 
-
 export async function POST(req: NextRequest) {
-  console.log("🚀 Webhook iniciado", new Date().toISOString());
-  const clerk = await clerkClient();
-
   try {
     const evt = await req.json();
-    console.log("📦 Evento recibido:", evt.type);
+    // Handle user creation
+    /* if (evt.type === 'user.created') {
+      const { id, first_name, last_name } = evt.data;
 
-    // 1) Invitación aceptada
-    if (evt.type === "organizationInvitation.accepted") {
-      const { email_address, public_metadata } = evt.data;
-      console.log("✉️ Invitación aceptada:", email_address);
+      const clerkCl = await clerkClient();
+      const memberships = await clerkCl.users.getOrganizationMembershipList({ userId: id });
+      const role = memberships.data[0].role.trim();
 
-      // Opcionalmente busca el userId, pero no intentes obtener el rol aún.
-      const users = await clerk.users.getUserList({ emailAddress: [email_address] });
-      if (users.data.length === 0) {
-        console.warn("Usuario no encontrado:", email_address);
-        return new Response("No user", { status: 200 });
+      await processUserRole(id, role);
+
+      if (first_name) {
+        await clerkCl.users.updateUser(id, {
+          firstName: first_name,
+          lastName: last_name,
+        });
       }
-      const userId = users.data[0].id;
 
-      // Aquí no actualizamos el rol ni llamamos a processUserRole.  El rol estará disponible
-      // cuando Clerk cree la membresía y envíe organizationMembership.created.
+    } */
+    if (evt.type === "user.created") {
+      const { id, /* first_name, last_name, */ unsafe_metadata } = evt.data;
+      const { /* access_career_compass, */ role } = unsafe_metadata ?? {};
 
-      // Puedes hacer alguna lógica adicional con public_metadata si lo necesitas.
-      return new Response("OK", { status: 200 });
+      const clerkCl = await clerkClient();
+      const organizationId = process.env.NYU_ORG_ID!;
+      //const role = 'org:admin'
+      /* const memberships = await clerkCl.users.getOrganizationMembershipList({
+        userId: id,
+      }); */
+
+      await clerkCl.organizations.updateOrganizationMembership({
+        organizationId,
+        userId: id as string,
+        //role: role as string /* === "org:student" ? "org:student" : "org:coach" */,
+        role: "org:coach", // For now, all new users are coaches
+      });
+
+      await processUserRole(id, role);
+
+      /* if (first_name) {
+        await clerkCl.users.updateUser(id, {
+          firstName: first_name,
+          lastName: last_name,
+        });
+      } */
     }
 
-    // 2) Nueva membresía creada (invitación aceptada o membresía creada por el administrador)
-    if (evt.type === "organizationMembership.created" ||
-        evt.type === "organization_membership.created") {
-      console.log("📬 organizationMembership.created");
-
-      const {
-        organization: { id: organizationId },
-        public_user_data: { user_id: userId },
-        role
-      } = evt.data;
-
-      console.log({ organizationId, userId, role });
-
-      // Ahora que tenemos la membresía, podemos procesar el rol asignado.
-      await processUserRole(userId, role);
-      return new Response("OK", { status: 200 });
-    }
-
-    // Otros eventos no gestionados
-    console.log("🔍 Evento no gestionado:", evt.type);
-    return new Response("Ignored", { status: 200 });
-
+    return new Response("Webhook received", { status: 200 });
   } catch (err) {
-    console.error("❌ Error en webhook:", err);
-    return new Response("Error", { status: 400 });
+    console.error("Error verifying webhook:", err);
+    return new Response("Error verifying webhook", { status: 400 });
   }
 }
 
-
-// … tu función processUserRole igual que antes …
-
 async function processUserRole(userId: string, role: string, access?: boolean) {
-  console.log("🎭 === INICIANDO processUserRole ===");
-  console.log("👤 UserID:", userId);
-  console.log("🎯 Role:", role);
-  console.log("🔑 Access:", access);
-
   if (role == "org:coach") {
-    console.log("👨‍🏫 Procesando rol de coach");
-    console.log("🚀 Access to Career Compass:", access);
-    
-    try {
-      // Here you can call your functions to create the coach database and update the role
-      console.log("📝 Creando base de datos de coach (comentado)");
-      //await createCoachDatabase({ userId });
-      console.log("🔄 Actualizando rol de coach (comentado)");
-      //await updateCoachRole({ userId, access });
-      console.log("✅ Procesamiento de coach completado");
-    } catch (error) {
-      console.error("❌ Error procesando coach:", error);
-      throw error;
-    }
+    console.log("Processing coach role for user:", userId);
+    console.log("Access:", access);
+
+    //await createCoachDatabase({ userId });
+    //await updateCoachRole({ userId, access });
   } else if (role == "org:student") {
-    console.log("👨‍🎓 Procesando rol de estudiante");
-    console.log("🚀 createStudentDatabase access:", access);
-    
-    try {
-      console.log("🔄 Actualizando rol de estudiante (comentado)");
-      //await updateStudentRole({ userId, access });
-      console.log("📝 Creando base de datos de estudiante (comentado)");
-      //await createStudentDatabase({ userId });
-      console.log("✅ Procesamiento de estudiante completado");
-    } catch (error) {
-      console.error("❌ Error procesando estudiante:", error);
-      throw error;
-    }
-  } else {
-    console.log("⚠️ Rol no reconocido:", role);
+    //await updateStudentRole({ userId, access });
+    //await createStudentDatabase({ userId });
   }
-  
-  console.log("🎭 === FINALIZANDO processUserRole ===");
 }
