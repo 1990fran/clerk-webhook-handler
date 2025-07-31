@@ -9,6 +9,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 export async function POST(req: NextRequest) {
   try {
     const evt = await req.json();
+    console.log("Received webhook event:", evt);
     // Handle user creation
     /* if (evt.type === 'user.created') {
       const { id, first_name, last_name } = evt.data;
